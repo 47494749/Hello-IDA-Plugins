@@ -28,7 +28,6 @@ This module implements simple functions for code management:
 - Useful for finding functions involved in encryption.
 
 ### Search Tables Module
-- Frequently used module.
 - Finds values and tables used for hashing, elliptic curves, AES, CRC, etc.
 
 ## Notes

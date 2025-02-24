@@ -1,7 +1,7 @@
 
 ## Overview
 
-The plugin consists of 6 distinct modules (for both IDA32 and IDA64) that perform various functions:
+The plugin consists of 6 distinct modules (for both IDA32 and IDA64 for IDA Pro 8 and IDA64 only for IDA Pro 9) that perform various functions:
 
 ### Help Module
 - Enables or disables other modules or individual functions within the modules.

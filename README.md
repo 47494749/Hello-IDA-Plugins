@@ -30,6 +30,15 @@ This module implements simple functions for code management:
 ### Search Tables Module
 - Finds values and tables used for hashing, elliptic curves, AES, CRC, etc.
 
+### TriCore Simulator — IDA Pro Plugin (Prototype)
+
+> **⚠️ This is a prototype / work-in-progress.**
+> Features marked as *not yet implemented* are planned but not available in the current build.
+
+A lightweight **Infineon TriCore** CPU simulator embedded inside **IDA Pro**.  
+It allows you to simulate individual functions directly from the disassembly view, inspect register and memory state, intercept memory reads with mock values, and perform basic fuzzing over register and memory inputs — all driven by structured commands written as **repeatable comments at the top of the target function**.
+
+
 ## Notes
 The UI might have some omissions (I do not enjoy creating UIs, and since the program was originally just for me, I left several things out). However, the program should not cause any issues.
 
@@ -37,10 +46,3 @@ The UI might have some omissions (I do not enjoy creating UIs, and since the pro
 If you find any bugs (which there likely are) or have any suggestions, you can contact me here or on LinkedIn.
 
 
-# TriCore Simulator — IDA Pro Plugin (Prototype)
-
-> **⚠️ This is a prototype / work-in-progress.**
-> Features marked as *not yet implemented* are planned but not available in the current build.
-
-A lightweight **Infineon TriCore** CPU simulator embedded inside **IDA Pro**.  
-It allows you to simulate individual functions directly from the disassembly view, inspect register and memory state, intercept memory reads with mock values, and perform basic fuzzing over register and memory inputs — all driven by structured commands written as **repeatable comments at the top of the target function**.

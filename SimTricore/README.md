@@ -1,30 +1,40 @@
-﻿# TriCore Simulator -- IDA Pro Plugin (Prototype)
+# TriCore Simulator -- IDA Pro Plugin (Prototype)
 
 > **[!] This is a prototype / work-in-progress.**
-> Features marked as *not yet implemented* are planned but not available in the current build.
+> Features marked as *TODO* are planned but not available in the current build.
 
-A lightweight **Infineon TriCore** CPU simulator embedded inside **IDA Pro**.  
-It allows you to simulate individual functions directly from the disassembly view, inspect register and memory state, intercept memory reads with mock values, and perform basic fuzzing over register and memory inputs -- all driven by structured commands written as **repeatable comments at the top of the target function**.
+A lightweight **Infineon TriCore** CPU simulator embedded inside **IDA Pro**.
+It allows you to simulate individual functions directly from the disassembly view,
+inspect register and memory state, intercept memory reads with mock values, and
+perform basic fuzzing over register and memory inputs -- all driven by structured
+commands written as **repeatable comments at the top of the target function**.
 
 ---
 
 ## Table of Contents
 
-- [Keyboard Shortcuts](#keyboard-shortcuts)
-- [How It Works](#how-it-works)
-- [Command Syntax](#command-syntax)
-- [Register Assignment](#register-assignment)
-- [Simulation Commands](#simulation-commands)
-- [CPU Core Selection](#cpu-core-selection)
-- [Memory Write](#memory-write)
-- [Memory Dump](#memory-dump)
-- [Mock Reads](#mock-reads)
-- [Save Flags](#save-flags)
-- [Generators](#generators)
-- [Fuzz Block](#fuzz-block)
-- [Notes](#notes)
+- [Part 1 -- Command Reference](#part-1----command-reference)
+  - [Keyboard Shortcuts](#keyboard-shortcuts)
+  - [How It Works](#how-it-works)
+  - [Command Syntax](#command-syntax)
+  - [Register Assignment](#register-assignment)
+  - [Simulation Commands](#simulation-commands)
+  - [CPU Core Selection](#cpu-core-selection)
+  - [Memory Write](#memory-write)
+  - [Memory Dump](#memory-dump)
+  - [Mock Reads](#mock-reads)
+  - [Save Flags](#save-flags)
+  - [Generators](#generators)
+  - [Fuzz Block](#fuzz-block)
+  - [Notes](#notes)
+- [Part 2 -- Supported Opcodes](#part-2----supported-opcodes)
+  - [Opcode Categories 1-27](#1-system--special-instructions)
+  - [Summary](#summary-by-category)
+  - [Missing / Unsupported](#missing--unsupported-opcodes)
 
 ---
+
+# Part 1 -- Command Reference
 
 ## Keyboard Shortcuts
 
@@ -59,6 +69,9 @@ The simulator reads the comment block, sets up the CPU state accordingly, and be
 - Values can be **decimal** (`123`) or **hexadecimal** (`0x7B`).
 - Lines starting with `;` or `#` inside the comment block are ignored (pure comments).
 - Commands execute **sequentially** (pipeline order) unless they are save flags, which are always deferred to the end.
+- Commands are **case-sensitive** (`@run` != `@Run`).
+- If no `@run` is present, an **implicit** `@run` is inserted before deferred saves.
+- Parse error on any line aborts the entire command pipeline.
 
 ---
 
@@ -94,33 +107,38 @@ Set the initial CPU state before simulation starts. All registers support a **va
 
 ## Simulation Commands
 
-Commands execute in the order they appear. `@run` triggers the simulator. If no `@run` is present, an implicit run is appended automatically. Multiple `@run` commands in sequence resume emulation from the current PC.
-
-Save flags (`@save_trace`, `@save_memory_trace`, `@save_memory_map`, `@save_fuzz_results`) are always deferred to the very end regardless of where they appear in the comment block.
-
 | Command | Description |
 |---------|-------------|
 | `@run` | Run or resume the simulator |
-| `@bp <addr>` | Add a breakpoint at the given address |
+| `@max <N>` | Maximum number of instructions to execute (0 = unlimited) |
+| `@timeout <ms>` | Simulation timeout in milliseconds |
+| `@loop_limit <N>` | Infinite-loop detection check interval (default: 1000) |
+| `@debug` | Enable per-function debug log |
+
+Multiple `@run` commands in sequence resume emulation from the current PC.
+
+---
+
+## Breakpoints
+
+| Command | Description |
+|---------|-------------|
+| `@bp <addr>` | Breakpoint at the given PC address |
 | `@bp Dn op value` | Break when data register `Dn` satisfies condition |
 | `@bp An op value` | Break when address register `An` satisfies condition |
 | `@bp memN[addr] op val` | Break on memory condition (`N` = 8, 16, 32, 64) |
-| `@max <N>` | Maximum number of instructions to execute |
-| `@timeout <ms>` | Simulation timeout in milliseconds |
-| `@loop_limit <N>` | Infinite-loop detection check interval (default: 1000) |
 
-Supported breakpoint operators: `==`  `!=`  `>`  `<`  `>=`  `<=`
+Supported operators: `==`  `!=`  `>`  `<`  `>=`  `<=`
+
+Breakpoints accumulate across multiple `@run` invocations.
 
 **Examples:**
 
 ```
 ; @bp 0x80013FFC
 ; @bp D5 >= 0x100
-; @bp A3 == 0xD0001000
 ; @bp mem32[0xD0002000] != 0
 ; @max 10000
-; @timeout 500
-; @loop_limit 2000
 ; @run
 ```
 
@@ -132,14 +150,6 @@ Select which TriCore CPU core to target for simulation.
 
 ```
 @cpu0 .. @cpu6
-```
-
-**Example:**
-
-```
-; @cpu0
-; @d0 = 1
-; @run
 ```
 
 ---
@@ -234,15 +244,15 @@ Save flags are always executed at the very end of the pipeline, regardless of wh
 
 ## Generators
 
-Generators are expressions that produce values dynamically. They can be used wherever a plain numeric value is accepted, unless noted otherwise.
+Generators are expressions that produce values dynamically. They can be used wherever a plain numeric value is accepted (register assignments, memory writes, mock reads, fuzz steps), unless noted otherwise.
 
 ### Group 1 -- Scalars *(registers, memory, fuzz)*
 
 | Generator | Description |
 |-----------|-------------|
+| `<numeric>` | Plain literal value (decimal or `0x` hex) |
 | `rand(min, max)` | Random value uniformly drawn from `[min, max]` |
-| `list(v1, v2, ...)` | In single-shot mode: uses the first value; in fuzz mode: iterates through values |
-| `<numeric>` | Plain literal value (decimal or hex) |
+| `list(v1, v2, ...)` | Single-shot: uses first value; fuzz mode: iterates through values |
 
 ### Group 2 -- Register-relative *(D/A registers, memory, fuzz)*
 
@@ -250,11 +260,11 @@ Generators are expressions that produce values dynamically. They can be used whe
 |-----------|-------------|
 | `neg(Dn\|An)` | Arithmetic negation of the register value |
 | `mirror(Dn\|An)` | Bit-reversal of the register value |
-| `arith(Dn\|An, op, val)` | Arithmetic operation on register: `+` `-` `*` `/` `%` `&` `\|` `^` `<<` `>>` |
+| `arith(Dn\|An, op, val)` | Arithmetic on register: `+` `-` `*` `/` `&` `\|` `^` |
 | `off(An, val)` | Address register value plus a signed offset |
 | `aligned(An, n)` | Address register aligned down to `n` bytes |
-| `overflow(An)` | Address just past the end of the region pointed to by `An` |
-| `underflow(An)` | Address just before the region pointed to by `An` |
+| `overflow(An)` | Address register + 0x7FFFFFFF |
+| `underflow(An)` | Address register - 0x7FFFFFFF |
 
 ### Group 3 -- Pointer *(A registers, memory, fuzz)*
 
@@ -266,7 +276,15 @@ Generators are expressions that produce values dynamically. They can be used whe
 
 | Generator | Description |
 |-----------|-------------|
-| `range(min, max, step)` | Iterate from `min` to `max` incrementing by `step` each fuzz iteration |
+| `range(min, max [,step])` | Iterate from `min` to `max` by `step` (default 1) |
+| `edges` | Boundary values: 0, 1, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFE, 0xFFFFFFFF |
+| `signed_edges` | Signed boundaries: -1, -128, -32768, -2^31, 0, 127, 32767 |
+| `pow2` | Powers of 2: 1, 2, 4, ..., 2^31 |
+| `pow2_minus1` | Powers of 2 minus 1: 0, 1, 3, 7, ..., 0xFFFFFFFF |
+| `rot_walk` | Rotating single-bit walk (same as pow2) |
+| `byte_walk` | Walking byte: 0xFF, 0xFF00, 0xFF0000, 0xFF000000 |
+| `walk(val)` | XOR base with walking bit: val ^ (1 << (it%32)) |
+| `flip(addr, n)` | Bit-flip: addr ^ (1 << (it%n)) |
 
 ### Special
 
@@ -301,15 +319,12 @@ The fuzz block lets you run the function repeatedly while varying one or more in
 | `A0`..`A15` | Address register |
 | `PSW`, `FCX`, `PCXI`, `ICR` | Special-purpose registers |
 | `SP[offset]` | Stack memory at `SP + offset` |
-| `mem8[addr]` | 8-bit memory location |
-| `mem16[addr]` | 16-bit memory location |
-| `mem32[addr]` | 32-bit memory location |
-| `mem64[addr]` | 64-bit memory location |
+| `mem8[addr]` .. `mem64[addr]` | Memory location (8/16/32/64-bit) |
 
 **Example:**
 
 ```
-; @d0  = 0xD0001000        ; base pointer
+; @d0  = 0xD0001000
 ; @a4  = 0xD0001000
 ; @max 2000
 ; @fuzz
@@ -328,16 +343,12 @@ The fuzz block lets you run the function repeatedly while varying one or more in
 
 ## Notes
 
-- Commands are **case-sensitive** (`@run` != `@Run`).
-- Values are decimal by default; prefix with `0x` for hexadecimal.
-- Lines beginning with `;` or `#` inside the comment block are pure comments and are ignored by the parser.
-- `@save_*` commands are always deferred and executed last, regardless of position.
-- Multiple `@run` commands resume from the current PC rather than restarting from the function entry.
-- This is a **prototype**: stability, accuracy, and feature completeness are not guaranteed. Feedback and bug reports are welcome via the issue tracker.
+- This is a **prototype**: stability, accuracy, and feature completeness are not guaranteed.
+- Feedback and bug reports are welcome via the issue tracker.
 
+---
 
-
-# Part 1 -- Supported Opcodes
+# Part 2 -- Supported Opcodes
 
 ## 1. System / Special Instructions
 
@@ -913,7 +924,7 @@ The fuzz block lets you run the function repeatedly while varying one or more in
 
 ---
 
-# Part 2 -- Missing / Unsupported Opcodes
+## Missing / Unsupported Opcodes
 
 The following TriCore ISA instructions are **not implemented** in the simulator.
 They are intentionally omitted because they relate to hardware features that have
@@ -952,506 +963,3 @@ no meaningful behavior in a software simulation context.
 - All **CACHE** instructions are decoded but execute as NOP (no cache model -- memory is flat).
 - **SVLCX/RSLCX/STLCX/STUCX/LDLCX/LDUCX** are fully implemented with context save area management.
 
----
-
-# Part 3 -- Primary Opcode Map (op1)
-
-The decoder handles the following primary opcode bytes (`op1 = instruction[7:0]`).
-16-bit instructions use `op1[0] == 0`, 32-bit instructions use `op1[0] == 1`.
-
-### 16-bit Instructions (op1 bit 0 = 0)
-
-| op1  | Format | Instructions                                    |
-|------|--------|-------------------------------------------------|
-| 0x00 | SR     | NOP, RET, RFE, FRET, DEBUG                      |
-| 0x02 | SR     | MOV (16-bit D[a]=const4)                         |
-| 0x04 | SR     | LD.BU (16-bit)                                   |
-| 0x06 | SRR    | ADD (16-bit)                                     |
-| 0x08 | SRC    | ADD (16-bit imm)                                 |
-| 0x0A | SR     | CMOV, CMOVN, ADD (16-bit variants)               |
-| 0x0C | SBC    | CALL (16-bit)                                    |
-| 0x0E | SBR    | JEQ, JNE (16-bit)                                |
-| 0x10 | SR     | ADDSC.A, MOV.A (16-bit)                          |
-| 0x12 | SRC    | SHA (16-bit)                                     |
-| 0x14 | SRR    | EQ (16-bit)                                      |
-| 0x16 | SRR    | AND (16-bit)                                     |
-| 0x18 | SBC    | LD.A (16-bit [A10]+off)                          |
-| 0x1A | SR     | RSUB, SAT.B, SAT.BU, SAT.H, SAT.HU, MOV.D      |
-| 0x1C | SBR    | JNZ, JZ (16-bit)                                 |
-| 0x1E | SBR    | JEQ, JNE (16-bit D15-based)                      |
-| 0x20 | SRR    | SUB.A (16-bit)                                   |
-| 0x22 | SRC    | MOV (16-bit imm)                                 |
-| 0x24 | SRC    | LD.W (16-bit [A15]+off)                          |
-| 0x26 | SRR    | OR (16-bit)                                      |
-| 0x28 | SBC    | ST.A (16-bit [A10]+off)                          |
-| 0x2A | SRR    | SUBS (16-bit)                                    |
-| 0x2C | SBR    | JZ.A, JNZ.A, JZ.T, JNZ.T (16-bit)               |
-| 0x2E | SBR    | JGEZ, JGTZ, JLEZ, JLTZ (16-bit)                  |
-| 0x30 | SRR    | ADD.A (16-bit)                                   |
-| 0x32 | SR/SRC | RSUB, SH (16-bit)                                |
-| 0x34 | SBR    | CALL (16-bit D15-based), J, JNZ, JZ              |
-| 0x38 | SBR    | JNE, JEQ (16-bit D15+imm)                        |
-| 0x3A | SRC    | ADDS (16-bit)                                    |
-| 0x3C | SBC    | J (16-bit)                                       |
-| 0x3E | SBR    | JNE, JEQ (16-bit reg)                            |
-| 0x40 | SRR    | MOV.AA (16-bit)                                  |
-| 0x42 | SRR    | LT (16-bit)                                      |
-| 0x48 | SRC    | LD.W (16-bit [A15]+off variant)                  |
-| 0x4C | SRC    | LD.BU (16-bit [A15]+off)                         |
-| 0x4E | SBR    | LT, NE, GE (16-bit)                              |
-| 0x50 | SRR    | MOV.A (16-bit)                                   |
-| 0x52 | SRC    | MOVH.A (16-bit)                                  |
-| 0x56 | SBR    | LEA (16-bit)                                     |
-| 0x58 | SRC    | LD.A (16-bit [A15]+off)                          |
-| 0x5C | SRC    | ST.W (16-bit [A15]+off)                          |
-| 0x60 | SRC    | MOV (16-bit = MOV.U D[a], const8)                |
-| 0x62 | SRC    | AND (16-bit imm)                                 |
-| 0x68 | SRC    | ST.A (16-bit [A15]+off)                          |
-| 0x6A | SRC    | OR (16-bit imm)                                  |
-| 0x6E | SRC    | MUL (16-bit)                                     |
-| 0x70 | SRR    | NOT (16-bit)                                     |
-| 0x72 | SRC    | MOV.D (16-bit)                                   |
-| 0x76 | SRR    | LOOP (16-bit)                                    |
-| 0x78 | SRC    | MOVH (16-bit)                                    |
-| 0x7A | SRC    | XOR (16-bit imm)                                 |
-| 0x7C | SBR    | CALL (16-bit)                                    |
-| 0x7E | SBR    | LOOP, LOOPU (16-bit)                              |
-| 0x80 | SRR    | SUB (16-bit)                                     |
-| 0x82 | SRC    | CADD, CADDN (16-bit)                             |
-| 0x84 | SRC    | LD.BU (16-bit variant)                           |
-| 0x88 | SRC    | ST.B (16-bit [A15]+off)                          |
-| 0x8A | SRC    | LD.H (16-bit)                                    |
-| 0x90 | SRR    | ADDIH.A (16-bit)                                 |
-| 0x92 | SRC    | MOV.U (16-bit)                                   |
-| 0xE8 | SRR    | CMPSWAP.W (16-bit)                               |
-| 0xEA | SRR    | LD.DD (16-bit)                                   |
-
-### 32-bit Instructions (op1 bit 0 = 1)
-
-| op1  | Format     | Instructions                                              |
-|------|------------|-----------------------------------------------------------|
-| 0x01 | RR         | MOV.AA, ADD.A, SUB.A, ADDSC.A, ADDSC.AT, EQ.A, NE.A, ... |
-| 0x03 | RR / SYS   | CMPSWAP.W, SWAPMSK.W, LD.HU, LHA, LDMST, LDUCX, ...     |
-| 0x05 | ABS / BO   | LD.B, LD.BU, ST.B (absolute/base+offset)                  |
-| 0x07 | BIT        | SH.AND.T, SH.ANDN.T, SH.OR.T, SH.ORN.T, ...             |
-| 0x09 | BO / BOL   | LD.W, LD.D, LD.A, LD.DA, LD.Q, LD.DD, LEA (base+offset)  |
-| 0x0B | RR         | ADD, ADDC, ADDX, SUB, SUBC, SUBX, ABS, ABSDIF, MIN, MAX..|
-| 0x0D | SYS/RR     | NOP, BISR, SYSCALL, HVCALL, DISABLE, ENABLE, RESTORE, ... |
-| 0x0F | RR         | SH, SHA, SHAS, SH.H, SHA.H, CLZ, CLO, CLS, SHUFFLE, ...  |
-| 0x11 | RR         | MUL, MULS, MUL.U, MULS.U                                 |
-| 0x13 | RCR        | MADD, MADDS, MADD.U, MADDS.U                              |
-| 0x15 | ABS / BO   | LD.B, LD.BU, STLCX, STUCX, LDLCX, LDUCX (absolute)       |
-| 0x17 | BIT        | AND.AND.T, AND.ANDN.T, AND.OR.T, AND.NOR.T, INS.T, INSN.T|
-| 0x19 | BOL        | LD.W, LD.A, LD.B, LD.BU, LD.H, LD.HU (BOL format)        |
-| 0x1B | RC         | ADD, ADDS, ADDS.U, ADDX, ADDC, RSUB, RSUBS, RSUBS.U      |
-| 0x1D | SBC/SBR    | J, JA, JL, JLA, CALL, CALLA                               |
-| 0x1F | BRC/BRR    | JZ.A, JNZ.A, LOOP, LOOPU                                  |
-| 0x21 | RCR        | MSUB, MSUBS, MSUB.U, MSUBS.U                              |
-| 0x23 | RRR        | CRCN                                                       |
-| 0x25 | ABS / BO   | ST.B, ST.H, ST.W, ST.D, ST.A, ST.DA, ST.Q, ST.T (abs)     |
-| 0x27 | BIT        | OR.AND.T, OR.ANDN.T, OR.OR.T, OR.NOR.T, OR.T, ORN.T      |
-| 0x29 | BO / BOL   | ST.W, ST.D, ST.A, ST.DA, ST.Q, ST.DD, SWAP, LDMST, ...   |
-| 0x2B | RC         | MUL, MUL.U, MUL (64-bit), MULS, MULS.U                   |
-| 0x2D | RCR / SYS  | J, JA, JL, JLA, CALL, CALLA, FCALL, FCALLA                |
-| 0x2F | BRC/BRR    | JEQ, JNE, JLT, JLT.U, JGE, JGE.U, JNEI, JNED            |
-| 0x31 | RCR        | MADD, MADDS                                                |
-| 0x33 | RR1        | MUL.Q, MULR.Q (Q-format multiply)                         |
-| 0x37 | BIT        | SH.EQ, SH.NE, SH.LT, SH.LT.U, SH.GE, SH.GE.U           |
-| 0x39 | BOL        | ST.W, ST.A, ST.B, ST.H (BOL format)                       |
-| 0x3B | RC         | SHA, SHAS, MOV, MOV.U, MOVH                               |
-| 0x3D | SBC/SBR    | JNZ, JZ, JGEZ, JGTZ, JLEZ, JLTZ + conditional branches    |
-| 0x3F | BRC/BRN    | JEQ.A, JNE.A, JZ.T, JNZ.T                                 |
-| 0x41 | RCR        | MSUB, MSUBS                                                |
-| 0x43 | RRR1       | MADD.H, MADDM.H, MADDMS.H, MADDS.H, MADDR.H, MADDRS.H   |
-| 0x47 | BIT        | NAND.T, NOR.T, XNOR.T, XOR.T, AND.T, ANDN.T              |
-| 0x49 | BO         | LEA, LD.W, LD.A, LD.D, LD.DA, LD.Q (base+offset)          |
-| 0x4B | RR (FP)    | ADD.F, ADD.DF, SUB.F, SUB.DF, MUL.F, MUL.DF, DIV.F, ...  |
-| 0x53 | RCR        | CADD, CADDN, SEL, SELN                                    |
-| 0x57 | BIT        | AND.EQ, AND.NE, AND.LT, AND.LT.U, AND.GE, AND.GE.U      |
-| 0x59 | BOL        | LD.W, LD.A (extended BOL format)                           |
-| 0x5B | RC         | CADD, CADDN, SEL, SELN                                    |
-| 0x5F | BRC/BRR    | JEQ, JNE (conditional branch)                             |
-| 0x61 | RR         | MOV, MOV.U, MOVH (RR format)                              |
-| 0x63 | RRR1       | MSUB.H, MSUBM.H, MSUBMS.H, MSUBS.H, MSUBR.H, MSUBRS.H   |
-| 0x67 | BIT        | OR.EQ, OR.NE, OR.LT, OR.LT.U, OR.GE, OR.GE.U            |
-| 0x69 | BO         | ST.W, ST.A, ST.D, ST.DA, ST.Q, SWAP.W (base+offset)       |
-| 0x6B | RR (FP)    | ABS.F, ABS.DF, NEG.F, NEG.DF, FTOI, FTOIZ, ITOF, ...     |
-| 0x6F | RR         | INSERT, EXTR, EXTR.U, DEXTR, IMASK (bit field)            |
-| 0x73 | RR1        | MUL.H, MULM.H, MULR.H (halfword multiply)                 |
-| 0x77 | BIT        | XOR.EQ, XOR.NE, XOR.LT, XOR.LT.U, XOR.GE, XOR.GE.U      |
-| 0x79 | BOL        | ST.W, ST.A (extended BOL format)                           |
-| 0x7B | RC         | ADDI, ADDIH, ADDIH.A, MOVH.A, LEA                         |
-| 0x7D | BRC/BRR    | JGE, JGE.U, JLT, JLT.U (conditional branch)              |
-| 0x7F | BRR        | JEQ, JNE (conditional branch variant)                      |
-| 0x81 | RR / ABS   | LD.W, LD.D, LD.A, LD.DA, LD.B, LD.BU, LD.H, LD.HU (abs)  |
-| 0x83 | RRR1       | MADD.Q, MADDR.Q, MADDRS.Q, MADDS.Q                        |
-| 0x85 | ABS / BO   | LD.W, LD.D (absolute variant)                              |
-| 0x87 | BIT        | SH.NAND.T, SH.NOR.T, SH.XNOR.T, SH.XOR.T, SH.AND.T, .. |
-| 0x89 | BO         | CACHEA.I, CACHEA.W, CACHEA.WI, CACHEI.I, CACHEI.W, ...    |
-| 0x8B | RC         | SH, SHA, SHAS (RC format)                                  |
-| 0x8F | RC         | AND, NAND, OR, NOR, XOR, XNOR, ANDN, ORN (RC format)      |
-| 0x93 | RR1        | MUL.Q (Q-format multiply variants)                         |
-| 0x9F | BRR        | LOOP, LOOPU (extended)                                     |
-| 0xA1 | ABS        | LEA, LHA, ST.T                                             |
-| 0xA3 | RRR1       | MSUB.Q, MSUBR.Q, MSUBRS.Q, MSUBS.Q                        |
-| 0xA5 | ABS        | ST.B, ST.H, ST.W, ST.D, ST.A, ST.DA (absolute)            |
-| 0xA7 | BIT        | AND.AND.T, AND.ANDN.T, AND.OR.T, AND.NOR.T duplicate      |
-| 0xA9 | BO         | SWAP.W, SWAPMSK.W, CMPSWAP.W, LDMST (base+offset)         |
-| 0xAB | RC         | SH.H, SHA.H (RC halfword shift)                           |
-| 0xAD | RCR        | LDLCX, LDUCX                                              |
-| 0xB3 | RR1        | MUL.H, MULM.H, MULR.H (halfword multiply variants)        |
-| 0xB7 | BIT        | INS.T, INSN.T                                              |
-| 0xBD | BRR        | JNEI, JNED (compare-and-branch)                            |
-| 0xBF | BRR        | JGE, JGE.U (extended branch)                               |
-| 0xC3 | RRR1       | MADDSU.H, MADDSUM.H, MADDSUMS.H, MADDSUR.H, ...           |
-| 0xC5 | ABS        | LDLCX, LDUCX, STLCX, STUCX (absolute)                     |
-| 0xC7 | BIT        | (combined bit-operations)                                  |
-| 0xD5 | ABS        | LD.A, LD.DA (absolute)                                     |
-| 0xD7 | RR         | EQ, NE, LT, LT.U, GE, GE.U, CLZ, CLS, EQ.B, ...         |
-| 0xDC | SRC        | (16-bit addressing)                                        |
-| 0xDF | BRC/BRR    | JNZ.T, JZ.T, JZ.A, JNZ.A                                  |
-| 0xE1 | RR         | MUL, MULS, MUL.U, MULS.U (extended)                       |
-| 0xE3 | RRR1       | MSUBAD.H, MSUBADM.H, MSUBADMS.H, MSUBADS.H, ...          |
-| 0xE5 | ABS        | ST.A, ST.DA (absolute)                                     |
-| 0xEB | RR         | CRC32.B, CRC32B.W, CRC32L.W, MULP.B, POPCNT.W, ...       |
-| 0xEF | RR         | INSERT, EXTR, EXTR.U (bit field extract)                   |
-| 0xF3 | RR         | DVINIT, DVINIT.B, DVINIT.BU, DVINIT.H, DVINIT.HU, ...    |
-| 0xF5 | ABS        | STLCX, STUCX (absolute)                                   |
-| 0xFD | BRC/BRR    | (conditional branches extended)                            |
-| 0xFF | BRR        | (conditional branches extended)                            |
-
----
-
-# Part 4 -- Comment Parser Commands
-
-The simulator reads `@commands` from IDA repeatable comments placed at the
-function entry point. Commands are parsed by `tricore_comment_parser.h` and
-executed sequentially before/during/after simulation.
-
-## Shortcuts
-
-| Shortcut | Action                         |
-|----------|--------------------------------|
-| `Alt-0`  | Run simulator on current func  |
-| `Ctrl-0` | Show help                      |
-
-## Syntax Rules
-
-- Lines starting with `;` or `#` are comments
-- Values can be decimal (`123`) or hex (`0x7B`)
-- All commands start with `@` prefix
-- Commands execute sequentially; `@run` triggers the simulator
-
----
-
-## 4.1 Register Assignment Commands
-
-| Syntax | Description |
-|--------|-------------|
-| `@d0..@d15 = value\|gen` | Set data register D0--D15 |
-| `@a0..@a15 = value\|gen` | Set address register A0--A15 |
-| `@psw = value\|gen` | Set Program Status Word |
-| `@pc = value` | Set Program Counter |
-| `@pcxi = value\|gen` | Set Previous Context Information |
-| `@fcx = value\|gen` | Set Free Context List Head |
-| `@lcx = value\|gen` | Set Free Context List Limit |
-| `@isp = value\|gen` | Set Interrupt Stack Pointer |
-| `@icr = value\|gen` | Set Interrupt Control Register |
-| `@biv = value\|gen` | Set Base Interrupt Vector |
-| `@btv = value\|gen` | Set Base Trap Vector |
-
-RHS can be a plain numeric value or any **Group 1/2** generator.
-
----
-
-## 4.2 Flow Control / Simulation Commands
-
-| Syntax | Description |
-|--------|-------------|
-| `@run` | Run / resume simulator |
-| `@max <N>` | Max instructions to execute (0 = unlimited) |
-| `@timeout <ms>` | Simulation timeout in milliseconds |
-| `@loop_limit <N>` | Infinite-loop check interval (default 1000) |
-| `@debug` | Enable per-function debug log |
-
-**Notes:** Without explicit `@run`, an implicit run is added before deferred save commands.
-Multiple `@run` in sequence resume from current PC.
-
----
-
-## 4.3 Breakpoint Commands
-
-| Syntax | Description |
-|--------|-------------|
-| `@bp <addr>` | Breakpoint at PC address |
-| `@bp Dn op value` | Break on data register condition |
-| `@bp An op value` | Break on address register condition |
-| `@bp memN[addr] op val` | Break on memory condition (N=8,16,32,64) |
-
-**Operators:** `==`, `!=`, `>`, `<`, `>=`, `<=`
-
-**Examples:**
-```
-@bp 0x80001000
-@bp d2 == 0xFF
-@bp mem32[0x1000] != 0
-```
-
----
-
-## 4.4 CPU Selection
-
-| Syntax | Description |
-|--------|-------------|
-| `@cpu0..@cpu6` | Select target CPU core (0--6) |
-
----
-
-## 4.5 Save Flags (always deferred to end)
-
-| Syntax | Description |
-|--------|-------------|
-| `@save_trace` | Save execution trace to file |
-| `@save_memory_trace` | Save memory access trace to file |
-| `@save_memory_map` | Save memory access map to file |
-| `@save_fuzz_results` | Save fuzz iteration results |
-
----
-
-## 4.6 Memory Write Commands
-
-| Syntax | Description |
-|--------|-------------|
-| `@memN [addr] = value\|gen` | Write N-bit value at addr (N=8,16,32,64) |
-| `@memN [addr] = list(v1,v2,...)` | Write N-bit list of values sequentially |
-| `@memN [begin-end] = value\|gen` | Fill N-bit range with value or generator |
-
----
-
-## 4.7 Memory Dump / Save Commands
-
-| Syntax | Description |
-|--------|-------------|
-| `@dump8(addr, len)` | Dump 8-bit hex values |
-| `@dump16(addr, len)` | Dump 16-bit hex values |
-| `@dump32(addr, len)` | Dump 32-bit hex values |
-| `@dump64(addr, len)` | Dump 64-bit hex values |
-| `@save_memory("path", addr, size)` | Save memory region to binary file |
-
----
-
-## 4.8 Mock Read Commands (intercept memory reads)
-
-| Syntax | Description |
-|--------|-------------|
-| `@mock_readN addr = value\|gen [, modifier]` | Intercept N-bit reads at addr (N=8,16,32,64) |
-
-**Modifiers:**
-
-| Modifier | Behavior |
-|----------|----------|
-| `last` (default) | Stay on last value after exhaustion |
-| `loop` | Loop from index 0 infinitely |
-| `loop(N)` | Loop from index N infinitely |
-| `loop(N, cnt)` | Loop from index N, cnt times max |
-
-Multiple lines for same addr+size = sequential phases.
-
-**Examples:**
-```
-@mock_read32 0x1000 = 42
-@mock_read8  0x2000 = list(1, 2, 3), loop
-@mock_read16 0x3000 = rand(0, 0xFFFF)
-@mock_read32 0x4000 = list(10, 20, 30), loop(1, 5)
-```
-
----
-
-## 4.9 Fuzz Block
-
-| Syntax | Description |
-|--------|-------------|
-| `@fuzz` | Start fuzz definition block |
-
-**Step line format:** `<N> [call(addr)] TARGET=gen [stop=cond] [options...]`
-
-### Fuzz Targets
-
-| Target | Description |
-|--------|-------------|
-| `D0..D15` | Data registers |
-| `A0..A15` | Address registers |
-| `PSW` | Program Status Word |
-| `FCX` | Free Context List Head |
-| `PCXI` | Previous Context Information |
-| `ICR` | Interrupt Control Register |
-| `SP[offset]` | Stack pointer + offset |
-| `mem8[addr]` | Memory 8-bit |
-| `mem16[addr]` | Memory 16-bit |
-| `mem32[addr]` | Memory 32-bit |
-| `mem64[addr]` | Memory 64-bit |
-
-### Stop Conditions (TODO)
-
-| Syntax | Description |
-|--------|-------------|
-| `stop=crash` | Stop on any crash/trap |
-| `stop=any_exception` | Stop on any exception |
-| `stop=trap(class, tin)` | Stop on specific trap |
-| `stop=pc(addr)` | Stop when PC reaches addr |
-| `stop=mem_write(addr)` | Stop on memory write at addr |
-| `stop=reg(Dn, val)` | Stop when register == val |
-| `stop=Dn!=val` | Stop when Dn != val |
-| `stop=Dn==val` | Stop when Dn == val |
-
-### Step Options (TODO)
-
-| Option | Description |
-|--------|-------------|
-| `log=all\|crash_only\|coverage\|unique_paths\|retval` | Logging mode |
-| `log=file(name.csv)` | Log to file |
-| `timeout=Nms` | Per-step timeout |
-| `max_iter=N` | Max iterations per step |
-| `cov_min=N` | Minimum coverage target |
-| `snapshot=before` | Take snapshot before step |
-| `restore=after` | Restore state after step |
-| `shrink=yes` | Minimize crashing input |
-| `reset_between` | Reset state between iterations |
-
-### Global Fuzz Options (TODO)
-
-| Option | Description |
-|--------|-------------|
-| `seed(N)` or `seed=N` | Set random seed |
-| `parallel=N` | Number of parallel workers |
-| `resume(file)` | Resume from saved state |
-| `sequence:` | Enable multi-step sequence mode |
-
----
-
-# Part 5 -- Generators
-
-Generators can be used as RHS in register assignments (`@dN = gen`),
-memory writes (`@memN [addr] = gen`), mock reads, and fuzz steps.
-
-## Group 1 -- Scalars (reg, mem, fuzz) -- Implemented
-
-| Syntax | Description |
-|--------|-------------|
-| `<numeric>` | Plain numeric value (dec or 0x hex) |
-| `rand(min, max)` | Random value in [min, max] |
-| `list(v1, v2, ...)` | Values from list (first value in one-shot mode) |
-
-## Group 2 -- Register-relative (reg D/A, mem, fuzz) -- Implemented
-
-| Syntax | Description |
-|--------|-------------|
-| `neg(Dn\|An)` | Negated register value |
-| `mirror(Dn\|An)` | Bit-mirrored register value |
-| `arith(Dn\|An, op, val)` | Arithmetic on register (`+`, `-`, `*`, `/`, `&`, `\|`, `^`) |
-| `sizeof(An)` | Size of pointed buffer (TODO) |
-| `off(An, val)` | Offset from address register |
-| `aligned(An, n)` | Align address register to n-boundary |
-| `overflow(An)` | Overflow address register (+0x7FFFFFFF) |
-| `underflow(An)` | Underflow address register (-0x7FFFFFFF) |
-
-## Group 3 -- Pointers (reg A, mem, fuzz) -- Implemented
-
-| Syntax | Description |
-|--------|-------------|
-| `stack(offset)` | Stack pointer (A10) + offset |
-
-## Group 4 -- Buffer/structured data (mem only) -- TODO
-
-| Syntax | Description |
-|--------|-------------|
-| `buf(size, fill)` | Allocate buffer; fill = `rand\|zero\|inc\|dec\|pattern(0xNN)\|proto=UDS\|proto=CAN` |
-| `struct(hex_string)` | Raw hex struct data |
-| `file(path)` | Load data from file |
-| `template(name)` | Named template |
-| `repeat(val, size)` | Repeated byte pattern |
-| `canframe(id, dlc, data)` | CAN frame |
-| `uds_req(sid, sub, data)` | UDS request |
-| `mutate(file, n)` | Mutate file data N times |
-
-## Group 5 -- Iteration-based (fuzz only)
-
-| Syntax | Description | Status |
-|--------|-------------|--------|
-| `range(min, max [,step])` | Iterate min->max by step (default 1) | Implemented |
-| `edges` | Boundary: 0, 1, 0x7FFFFFFF, 0x80000000, 0xFFFFFFFE, 0xFFFFFFFF | Implemented |
-| `signed_edges` | Signed: -1, -128, -32768, -2^31, 0, 127, 32767 | Implemented |
-| `pow2` | Powers of 2: 1, 2, 4, ..., 2^31 (32 values) | Implemented |
-| `pow2_minus1` | Powers of 2 minus 1: 0, 1, 3, 7, ..., 0xFFFFFFFF | Implemented |
-| `rot_walk` | Rotating single-bit walk (same as pow2) | Implemented |
-| `byte_walk` | Walking byte: 0xFF, 0xFF00, 0xFF0000, 0xFF000000 | Implemented |
-| `walk(val)` | XOR base with walking bit: val ^ (1 << (it%32)) | Implemented |
-| `flip(addr, n)` | Bit-flip: addr ^ (1 << (it%n)) | Implemented |
-| `mask_and(val)` | AND mask on current value | TODO |
-| `mask_or(val)` | OR mask on current value | TODO |
-| `mask_xor(val)` | XOR mask on current value | TODO |
-| `freq(val, n)` | Repeated value N times | TODO |
-| `prev_result` | Previous run result | TODO |
-| `ret_val` | Return value from previous call | TODO |
-| `state_from(An)` | State snapshot from register | TODO |
-
-## Special
-
-| Syntax | Description |
-|--------|-------------|
-| `flag(C=1,V=0,Z=1,N=0)` | PSW flag combination (any subset of C,V,Z,N) |
-
----
-
-## Buffer Fill Types (for `buf()` generator)
-
-| Token | Description |
-|-------|-------------|
-| `rand` | Random bytes |
-| `zero` | All 0x00 |
-| `inc` | Incrementing 0x00, 0x01, ... |
-| `dec` | Decrementing 0xFF, 0xFE, ... |
-| `pattern(0xNN)` | Repeat single byte |
-| `proto=UDS` | UDS protocol format |
-| `proto=CAN` | CAN protocol format |
-
----
-
-# Part 6 -- Pipeline Execution Rules
-
-1. Commands execute in order as written
-2. `@save_trace` / `@save_memory_trace` / `@save_memory_map` / `@save_fuzz_results` are **always deferred** to end
-3. If no `@run` is present, an **implicit `@run`** is inserted before deferred saves
-4. Multiple `@run` commands resume from current PC
-5. `@bp` accumulates across multiple `@run` invocations
-6. Save flags are pre-scanned so trace gating is active during simulation
-7. Parse error on any line aborts the entire command pipeline
-
----
-
-# Part 7 -- Internal Enums
-
-## CmdType (command pipeline)
-
-```
-CMD_REG_SET        CMD_MEM_WRITE      CMD_MEM_LIST       CMD_MEM_FILL
-CMD_DUMP           CMD_SAVE_MEMORY    CMD_SET_BP         CMD_SET_MAX
-CMD_SET_TIMEOUT    CMD_SET_LOOP_LIMIT CMD_SET_CPU        CMD_SAVE_TRACE
-CMD_SAVE_MEM_TRACE CMD_SAVE_MEM_MAP   CMD_SAVE_FUZZ      CMD_RUN
-CMD_FUZZ           CMD_MEM_GEN        CMD_MOCK_READ      CMD_DEBUG
-```
-
-## FuzzGenType (generators)
-
-```
-FGEN_CONST         FGEN_RAND          FGEN_LIST          FGEN_NEG
-FGEN_MIRROR        FGEN_ARITH         FGEN_SIZEOF        FGEN_OFF
-FGEN_ALIGNED       FGEN_OVERFLOW      FGEN_UNDERFLOW     FGEN_STACK_PTR
-FGEN_BUF           FGEN_STRUCT        FGEN_FILE          FGEN_TEMPLATE
-FGEN_REPEAT        FGEN_CANFRAME      FGEN_UDS_REQ       FGEN_MUTATE
-FGEN_RANGE         FGEN_EDGES         FGEN_SIGNED_EDGES  FGEN_POW2
-FGEN_POW2_MINUS1   FGEN_ROT_WALK      FGEN_BYTE_WALK     FGEN_WALK
-FGEN_FLIP          FGEN_MASK_AND      FGEN_MASK_OR       FGEN_MASK_XOR
-FGEN_FREQ          FGEN_PREV_RESULT   FGEN_RET_VAL       FGEN_STATE_FROM
-FGEN_PSW_FLAG
-```

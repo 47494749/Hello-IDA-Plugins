@@ -1,4 +1,4 @@
-# Hello-IDA-Plugins by Luigi Origa
+﻿# Hello-IDA-Plugins by Luigi Origa
 ## Overview
 
 The plugin consists of 6 distinct modules (for both IDA32 and IDA64 for Hex-rays IDA Pro 8 and IDA64 only for Hex-rays IDA Pro 9) that perform various functions:
@@ -30,13 +30,13 @@ This module implements simple functions for code management:
 ### Search Tables Module
 - Finds values and tables used for hashing, elliptic curves, AES, CRC, etc.
 
-### TriCore Simulator — IDA Pro Plugin (Prototype)
+### TriCore Simulator -- IDA Pro Plugin (Prototype)
 
-> **⚠️ This is a prototype / work-in-progress.**
+> **[!] This is a prototype / work-in-progress.**
 > Features marked as *not yet implemented* are planned but not available in the current build.
 
 A lightweight **Infineon TriCore** CPU simulator embedded inside **IDA Pro**.  
-It allows you to simulate individual functions directly from the disassembly view, inspect register and memory state, intercept memory reads with mock values, and perform basic fuzzing over register and memory inputs — all driven by structured commands written as **repeatable comments at the top of the target function**.
+It allows you to simulate individual functions directly from the disassembly view, inspect register and memory state, intercept memory reads with mock values, and perform basic fuzzing over register and memory inputs -- all driven by structured commands written as **repeatable comments at the top of the target function**.
 
 
 ## Notes

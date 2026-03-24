@@ -266,6 +266,26 @@ Generators are expressions that produce values dynamically. They can be used whe
 | `overflow(An)` | Address register + 0x7FFFFFFF |
 | `underflow(An)` | Address register - 0x7FFFFFFF |
 
+### op_* shortcuts *(named operators, equivalent to arith)*
+
+| Generator | Description |
+|-----------|-------------|
+| `op_add(reg, imm)` | `reg + imm` |
+| `op_sub(reg, imm)` | `reg - imm` |
+| `op_mul(reg, imm)` | `reg * imm` |
+| `op_div(reg, imm)` | `reg / imm` (unsigned) |
+| `op_mod(reg, imm)` | `reg % imm` |
+| `op_and(reg, imm)` | `reg & imm` |
+| `op_or(reg, imm)` | `reg \| imm` |
+| `op_xor(reg, imm)` | `reg ^ imm` |
+| `op_not(reg)` | `~reg` (bitwise complement) |
+| `op_shl(reg, imm)` | `reg << imm` (logical left shift) |
+| `op_shr(reg, imm)` | `reg >> imm` (logical right shift) |
+| `op_asl(reg, imm)` | `reg << imm` (same as shl) |
+| `op_asr(reg, imm)` | `reg >> imm` (arithmetic, sign-extended) |
+| `op_abs(reg)` | Absolute value |
+| `op_clz(reg)` | Count leading zeros |
+
 ### Group 3 -- Pointer *(A registers, memory, fuzz)*
 
 | Generator | Description |

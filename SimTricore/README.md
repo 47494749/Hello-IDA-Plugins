@@ -1,4 +1,4 @@
-# TriCore Simulator -- IDA Pro Plugin (Prototype)
+# TriCore Simulator -- IDA Pro Plugin (Prototype) by Luigi Origa
 
 > **[!] This is a prototype / work-in-progress.**
 > Features marked as *TODO* are planned but not available in the current build.
@@ -982,4 +982,3 @@ no meaningful behavior in a software simulation context.
 - **DISABLE/ENABLE/RESTORE** are decoded; they modify ICR.IE internally.
 - All **CACHE** instructions are decoded but execute as NOP (no cache model -- memory is flat).
 - **SVLCX/RSLCX/STLCX/STUCX/LDLCX/LDUCX** are fully implemented with context save area management.
-

@@ -4,7 +4,36 @@ All notable changes to the ARM Simulator IDA plugin.
 
 ---
 
-## [Current] -- 2026-07-23
+## [0.2] -- 2026-08-29
+
+### Fixed
+
+- Help text (`Ctrl-1`): removed false `(TODO)` labels from generators that are fully implemented (`edges`, `signed_edges`, `pow2`, `pow2_minus1`, `rot_walk`, `byte_walk`, `walk`, `flip`, `freq`, `prev_result`, `ret_val`)
+- Help text: removed non-existent generators (`mask_and`, `mask_or`, `mask_xor`) that were never in the codebase
+- Help text: removed false `(TODO)` from fuzz stop conditions `crash`, `any_exception`, `pc(addr)`, `Rn==val`, `Rn!=val` which are fully evaluated at runtime
+- Help text: removed false `(TODO)` from `seed(N)` fuzz option which is fully functional
+- Help text: corrected `buf(size,fill)` to `buf(size)` to match parser signature
+- Help text: clarified `(TODO)` meaning as "parsed but not yet evaluated at runtime"
+- README: added missing Group 4 (Buffer/structured data) with proper `(TODO)` annotations
+- README: corrected flag names list from `N, Z, C, V, Q, GE, T` to `N, Z, C, V, Q` (only these are supported by the parser)
+- README: marked `reg(Rn,val)` and `mem_write(addr)` fuzz stop conditions as TODO (parsed but not in runtime switch)
+- README: marked fuzz log types as TODO (parsed but not evaluated at runtime)
+- README: annotated fuzz global options `sequence:`, `parallel=N`, `resume(file)` as TODO
+- Full alignment between help text, README, and actual code for all commands, generators, and fuzz features
+
+### Added
+
+- Help text: added `@debug` command (was implemented but missing from help)
+- Help text: added full `op_*` shortcuts section (`op_add`, `op_sub`, `op_mul`, `op_div`, `op_mod`, `op_and`, `op_or`, `op_xor`, `op_not`, `op_shl`, `op_shr`, `op_asl`, `op_asr`, `op_abs`, `op_clz`)
+- Help text: added `const(val)` generator
+- Help text: added flag names list (`N, Z, C, V, Q`)
+- README: added `const(val)` generator to Group 1
+- README: added `freq(val, n)`, `prev_result`, `ret_val`, `state_from(Rn)` to iteration-based generators
+- README: added `mutate(file, n)` to buffer/structured data generators
+
+---
+
+## [0.1] -- 2026-07-23
 
 ### Features
 

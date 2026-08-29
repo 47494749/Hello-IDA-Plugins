@@ -111,10 +111,10 @@ Set the initial CPU state before simulation starts. All registers support a **va
 | Command | Description |
 |---------|-------------|
 | `@run` | Run or resume the simulator |
+| `@debug` | Enable per-instruction debug log |
 | `@max <N>` | Maximum number of instructions to execute (default 100000) |
 | `@timeout <ms>` | Simulation timeout in milliseconds (default 30000) |
 | `@loop_limit <N>` | Infinite-loop detection check interval (default 1000) |
-| `@debug` | Enable per-function debug log |
 
 Multiple `@run` commands in sequence resume emulation from the current PC.
 
@@ -243,6 +243,7 @@ Generators are expressions that produce values dynamically. They can be used whe
 | `<numeric>` | Plain literal value (decimal or `0x` hex) |
 | `rand(min, max)` | Random value uniformly drawn from `[min, max]` |
 | `list(v1, v2, ...)` | Single-shot: uses first value; fuzz mode: iterates through values |
+| `const(val)` | Explicit constant value |
 
 ### Group 2 -- Register-relative *(registers, memory, fuzz)*
 
@@ -282,7 +283,18 @@ Generators are expressions that produce values dynamically. They can be used whe
 |-----------|-------------|
 | `stack(offset)` | Stack pointer (`R13`) plus a signed offset |
 
-### Group 4 -- Iteration-based *(fuzz only)*
+### Group 4 -- Buffer/structured data *(memory only, TODO -- parsed but not yet evaluated)*
+
+| Generator | Description |
+|-----------|-------------|
+| `buf(size)` | Allocate buffer |
+| `struct(hex)` | Raw hex struct data |
+| `file(path)` | Load data from file |
+| `template(name)` | Named template |
+| `repeat(val, size)` | Repeated byte pattern |
+| `mutate(file, n)` | Mutate file data N times |
+
+### Group 5 -- Iteration-based *(fuzz only)*
 
 | Generator | Description |
 |-----------|-------------|
@@ -293,8 +305,12 @@ Generators are expressions that produce values dynamically. They can be used whe
 | `pow2_minus1` | Powers of 2 minus 1: 0, 1, 3, 7, ..., 0xFFFFFFFF |
 | `rot_walk` | Rotating single-bit walk |
 | `byte_walk` | Walking byte: 0xFF, 0xFF00, 0xFF0000, 0xFF000000 |
-| `walk(val)` | XOR base with walking bit: val ^ (1 << (it%32)) |
+| `walk(val)` | Walking bit XOR with val: val ^ (1 << (it%32)) |
 | `flip(addr, n)` | Bit-flip: addr ^ (1 << (it%n)) |
+| `freq(val, n)` | Repeated value N times |
+| `prev_result` | Previous run result |
+| `ret_val` | Return value from previous call |
+| `state_from(Rn)` | *(TODO)* State snapshot from register |
 
 ### Special
 
@@ -302,7 +318,7 @@ Generators are expressions that produce values dynamically. They can be used whe
 |-----------|-------------|
 | `flag(N=v, Z=v, ...)` | Compose a CPSR value from individual flag assignments |
 
-**Flag names:** `N`, `Z`, `C`, `V`, `Q`, `GE`, `T`
+**Flag names:** `N`, `Z`, `C`, `V`, `Q`
 
 **Example:**
 
@@ -318,10 +334,10 @@ The fuzz block lets you run the function repeatedly while varying one or more in
 
 ```
 @fuzz
-  seed(N)
-  sequence:
-  parallel=N
-  resume(file)
+  seed(N)                    ; set random seed
+  sequence:                  ; (TODO) enable multi-step sequence mode
+  parallel=N                 ; (TODO) number of parallel workers
+  resume(file)               ; (TODO) resume from saved state
   <iterations> [call(addr)] TARGET = gen [stop=cond] [log=type] [options...]
 ```
 
@@ -339,15 +355,15 @@ The fuzz block lets you run the function repeatedly while varying one or more in
 
 | Condition | Description |
 |-----------|-------------|
-| `crash` | Stop on any crash/fault |
+| `crash` | Stop on any crash/trap |
 | `any_exception` | Stop on any exception |
 | `pc(addr)` | Stop when PC reaches address |
-| `mem_write(addr)` | Stop on write to address |
-| `reg(Rn, val)` | Stop when register equals value |
 | `Rn==val` | Stop when register equals value |
 | `Rn!=val` | Stop when register differs |
+| `reg(Rn, val)` | *(TODO)* Stop when register equals value |
+| `mem_write(addr)` | *(TODO)* Stop on write to address |
 
-### Log Types
+### Log Types *(TODO -- parsed but not yet evaluated at runtime)*
 
 | Type | Description |
 |------|-------------|
